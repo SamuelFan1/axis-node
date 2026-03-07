@@ -1,0 +1,16 @@
+[Unit]
+Description=Axis Node Agent
+After=network-online.target axisd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/apps/axis-node
+EnvironmentFile=-/apps/axis-node/.env
+Environment=AXIS_NODE_HOSTNAME=%H
+ExecStart=/usr/local/bin/axis-node agent
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

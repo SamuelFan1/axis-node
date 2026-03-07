@@ -1,0 +1,5 @@
+.env
+push.sh
+data/
+bin/
+dist/
