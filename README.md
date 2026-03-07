@@ -11,7 +11,8 @@
 - 节点 UUID 本地持久化
 - 节点向 Axis 管理端注册
 - 基于 `.env` / 环境变量的最小配置加载
-- 周期性上报 CPU / 内存 / 磁盘使用率
+- 周期性上报 CPU 核数、使用率；内存/Swap 总量与已用；全部磁盘挂载点明细
+- 启动时自动探测公网 IP 并随上报发送
 
 ## 命令
 
@@ -32,10 +33,18 @@ cp .env.example .env
 推荐生产环境使用 systemd：
 
 ```bash
-sudo cp /apps/axis-node/deployments/systemd/axis-node.service /etc/systemd/system/axis-node.service
+# 构建并部署（需先启动 axisd）
+cd /apps/axis-node
+go build -o axis-node ./cmd/axis-node
+sudo cp axis-node /usr/local/bin/
+
+# 安装 systemd 单元并启动
+sudo cp deployments/systemd/axis-node.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now axis-node.service
 ```
+
+`axis-node.service` 依赖 `axisd.service`，会在其启动后自动拉起。
 
 ## 配置项
 
@@ -59,8 +68,10 @@ sudo systemctl enable --now axis-node.service
 - 如果不通过 systemd 运行，则回退到 `os.Hostname()`
 - `AXIS_NODE_HOSTNAME` 会直接显示在 Axis 管理端的服务器列表中
 - `AXIS_NODE_REPORT_INTERVAL_SEC` 默认 10 秒
-- `AXIS_NODE_DISK_PATH` 默认 `/`
+- `AXIS_NODE_DISK_PATH` 默认 `/`（仅用于兼容，实际会采集全部挂载点）
 - `agent` 启动后会先注册，再按配置周期持续上报最新资源指标
+- 公网 IP 通过外部服务自动探测，探测失败时为空，不阻塞上报
+- 磁盘信息按全部挂载点上报，伪文件系统（proc、tmpfs 等）已过滤
 
 ## License
 

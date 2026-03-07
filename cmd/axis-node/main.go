@@ -3,13 +3,16 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/SamuelFan1/axis-node/internal/axisclient"
 	"github.com/SamuelFan1/axis-node/internal/config"
+	"github.com/SamuelFan1/axis-node/internal/ippublic"
 	"github.com/SamuelFan1/axis-node/internal/metrics"
 	"github.com/SamuelFan1/axis-node/internal/nodeid"
 )
@@ -105,26 +108,48 @@ func runAgent() error {
 	}
 
 	collector := metrics.NewSystemCollector(cfg.DiskPath)
+	publicIP := ippublic.Detect()
 	reportOnce := func() error {
 		snapshot, err := collector.Collect()
 		if err != nil {
 			return err
 		}
+		internalIP := extractInternalIP(cfg.ManagementAddress)
+		diskDetails := make([]axisclient.DiskDetail, len(snapshot.DiskDetails))
+		for i, d := range snapshot.DiskDetails {
+			diskDetails[i] = axisclient.DiskDetail{
+				MountPoint:   d.MountPoint,
+				Filesystem:   d.Filesystem,
+				TotalGB:      d.TotalGB,
+				UsedGB:       d.UsedGB,
+				UsagePercent: d.UsagePercent,
+			}
+		}
 		_, err = client.ReportNode(axisclient.ReportNodeRequest{
 			UUID:               uuidValue,
 			Hostname:           cfg.Hostname,
 			ManagementAddress:  cfg.ManagementAddress,
+			InternalIP:         internalIP,
+			PublicIP:           publicIP,
 			Region:             cfg.Region,
 			Status:             cfg.Status,
+			CPUCores:           snapshot.CPUCores,
 			CPUUsagePercent:    snapshot.CPUUsagePercent,
+			MemoryTotalGB:      snapshot.MemoryTotalGB,
+			MemoryUsedGB:       snapshot.MemoryUsedGB,
 			MemoryUsagePercent: snapshot.MemoryUsagePercent,
+			SwapTotalGB:        snapshot.SwapTotalGB,
+			SwapUsedGB:         snapshot.SwapUsedGB,
+			SwapUsagePercent:   snapshot.SwapUsagePercent,
 			DiskUsagePercent:   snapshot.DiskUsagePercent,
+			DiskDetails:        diskDetails,
 		})
 		if err != nil {
 			return err
 		}
-		fmt.Printf("reported node: uuid=%s cpu=%.1f%% memory=%.1f%% disk=%.1f%%\n",
+		fmt.Printf("reported node: uuid=%s cpu=%d cores %.1f%% mem=%.1f%% disk=%.1f%%\n",
 			uuidValue,
+			snapshot.CPUCores,
 			snapshot.CPUUsagePercent,
 			snapshot.MemoryUsagePercent,
 			snapshot.DiskUsagePercent,
@@ -154,6 +179,14 @@ func runAgent() error {
 			return nil
 		}
 	}
+}
+
+func extractInternalIP(managementAddress string) string {
+	host, _, err := net.SplitHostPort(managementAddress)
+	if err == nil && strings.TrimSpace(host) != "" {
+		return host
+	}
+	return managementAddress
 }
 
 func printUsage() {

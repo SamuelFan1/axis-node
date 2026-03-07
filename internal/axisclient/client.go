@@ -35,15 +35,32 @@ type RegisterNodeResponse struct {
 	Error string `json:"error"`
 }
 
+type DiskDetail struct {
+	MountPoint   string  `json:"mount_point"`
+	Filesystem   string  `json:"filesystem"`
+	TotalGB      float64 `json:"total_gb"`
+	UsedGB       float64 `json:"used_gb"`
+	UsagePercent float64 `json:"usage_percent"`
+}
+
 type ReportNodeRequest struct {
-	UUID               string  `json:"uuid"`
-	Hostname           string  `json:"hostname"`
-	ManagementAddress  string  `json:"management_address"`
-	Region             string  `json:"region"`
-	Status             string  `json:"status"`
-	CPUUsagePercent    float64 `json:"cpu_usage_percent"`
-	MemoryUsagePercent float64 `json:"memory_usage_percent"`
-	DiskUsagePercent   float64 `json:"disk_usage_percent"`
+	UUID               string       `json:"uuid"`
+	Hostname           string       `json:"hostname"`
+	ManagementAddress  string       `json:"management_address"`
+	InternalIP         string       `json:"internal_ip"`
+	PublicIP           string       `json:"public_ip"`
+	Region             string       `json:"region"`
+	Status             string       `json:"status"`
+	CPUCores           int          `json:"cpu_cores"`
+	CPUUsagePercent    float64      `json:"cpu_usage_percent"`
+	MemoryTotalGB      float64      `json:"memory_total_gb"`
+	MemoryUsedGB       float64      `json:"memory_used_gb"`
+	MemoryUsagePercent float64      `json:"memory_usage_percent"`
+	SwapTotalGB        float64      `json:"swap_total_gb"`
+	SwapUsedGB         float64      `json:"swap_used_gb"`
+	SwapUsagePercent   float64      `json:"swap_usage_percent"`
+	DiskUsagePercent   float64      `json:"disk_usage_percent"`
+	DiskDetails        []DiskDetail `json:"disk_details"`
 }
 
 type ReportNodeResponse struct {
@@ -90,7 +107,7 @@ func (c *Client) RegisterNode(req RegisterNodeRequest) (*RegisterNodeResponse, e
 
 	if resp.StatusCode >= 400 {
 		if parsed.Error != "" {
-			return nil, fmt.Errorf(parsed.Error)
+			return nil, fmt.Errorf("%s", parsed.Error)
 		}
 		return nil, fmt.Errorf("axis server returned status %d", resp.StatusCode)
 	}
@@ -124,10 +141,11 @@ func (c *Client) ReportNode(req ReportNodeRequest) (*ReportNodeResponse, error) 
 
 	if resp.StatusCode >= 400 {
 		if parsed.Error != "" {
-			return nil, fmt.Errorf(parsed.Error)
+			return nil, fmt.Errorf("%s", parsed.Error)
 		}
 		return nil, fmt.Errorf("axis server returned status %d", resp.StatusCode)
 	}
 
 	return &parsed, nil
 }
+
