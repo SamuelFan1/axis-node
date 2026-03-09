@@ -55,6 +55,7 @@ func runRegister() error {
 		Hostname:          cfg.Hostname,
 		ManagementAddress: cfg.ManagementAddress,
 		Region:            cfg.Region,
+		Zone:              cfg.Zone,
 		Status:            cfg.Status,
 	})
 	if err != nil {
@@ -95,6 +96,7 @@ func runAgent() error {
 		Hostname:          cfg.Hostname,
 		ManagementAddress: cfg.ManagementAddress,
 		Region:            cfg.Region,
+		Zone:              cfg.Zone,
 		Status:            cfg.Status,
 	})
 	if err != nil {
@@ -132,6 +134,7 @@ func runAgent() error {
 			InternalIP:         internalIP,
 			PublicIP:           publicIP,
 			Region:             cfg.Region,
+			Zone:               cfg.Zone,
 			Status:             cfg.Status,
 			CPUCores:           snapshot.CPUCores,
 			CPUUsagePercent:    snapshot.CPUUsagePercent,

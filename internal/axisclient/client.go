@@ -20,6 +20,7 @@ type RegisterNodeRequest struct {
 	Hostname          string `json:"hostname"`
 	ManagementAddress string `json:"management_address"`
 	Region            string `json:"region"`
+	Zone              string `json:"zone"`
 	Status            string `json:"status"`
 }
 
@@ -30,6 +31,7 @@ type RegisterNodeResponse struct {
 		Hostname          string `json:"hostname"`
 		ManagementAddress string `json:"management_address"`
 		Region            string `json:"region"`
+		Zone              string `json:"zone"`
 		Status            string `json:"status"`
 	} `json:"node"`
 	Error string `json:"error"`
@@ -50,6 +52,7 @@ type ReportNodeRequest struct {
 	InternalIP         string       `json:"internal_ip"`
 	PublicIP           string       `json:"public_ip"`
 	Region             string       `json:"region"`
+	Zone               string       `json:"zone"`
 	Status             string       `json:"status"`
 	CPUCores           int          `json:"cpu_cores"`
 	CPUUsagePercent    float64      `json:"cpu_usage_percent"`

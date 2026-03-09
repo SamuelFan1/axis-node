@@ -12,6 +12,7 @@ type Config struct {
 	ServerURL         string
 	ManagementAddress string
 	Region            string
+	Zone              string
 	Hostname          string
 	Status            string
 	UUIDFile          string
@@ -34,9 +35,10 @@ func Load() (*Config, error) {
 		ServerURL:         getEnv("AXIS_NODE_SERVER_URL", "http://127.0.0.1:9090"),
 		ManagementAddress: getEnv("AXIS_NODE_MANAGEMENT_ADDRESS", ""),
 		Region:            getEnv("AXIS_NODE_REGION", ""),
+		Zone:              strings.ToUpper(strings.TrimSpace(getEnv("AXIS_NODE_ZONE", ""))),
 		Hostname:          hostname,
 		Status:            getEnv("AXIS_NODE_STATUS", "up"),
-		UUIDFile:          getEnv("AXIS_NODE_UUID_FILE", "./data/node-uuid"),
+		UUIDFile:          getEnv("AXIS_NODE_UUID_FILE", "/data/axis-node/node-uuid"),
 		SharedToken:       getEnv("AXIS_NODE_SHARED_TOKEN", ""),
 		ReportIntervalSec: getEnvInt("AXIS_NODE_REPORT_INTERVAL_SEC", 10),
 		DiskPath:          getEnv("AXIS_NODE_DISK_PATH", "/"),
@@ -47,6 +49,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.Region == "" {
 		return nil, fmt.Errorf("AXIS_NODE_REGION is required")
+	}
+	if cfg.Zone == "" {
+		return nil, fmt.Errorf("AXIS_NODE_ZONE is required")
+	}
+	if len(cfg.Zone) != 2 || !isAlpha2(cfg.Zone) {
+		return nil, fmt.Errorf("AXIS_NODE_ZONE must be a 2-letter ISO-3166-1 alpha-2 country code")
 	}
 	if cfg.Hostname == "" {
 		return nil, fmt.Errorf("unable to determine hostname")
@@ -92,6 +100,18 @@ func loadEnvFile(path string) {
 		value = strings.Trim(value, `"'`)
 		_ = os.Setenv(key, value)
 	}
+}
+
+func isAlpha2(s string) bool {
+	if len(s) != 2 {
+		return false
+	}
+	for _, c := range s {
+		if (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+			return false
+		}
+	}
+	return true
 }
 
 func getEnv(key, defaultValue string) string {

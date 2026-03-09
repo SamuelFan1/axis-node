@@ -51,7 +51,8 @@ sudo systemctl enable --now axis-node.service
 
 - `AXIS_NODE_SERVER_URL`
 - `AXIS_NODE_MANAGEMENT_ADDRESS`
-- `AXIS_NODE_REGION`
+- `AXIS_NODE_REGION`：大洲（asia、europe、australia、north_america、south_america）
+- `AXIS_NODE_ZONE`：可用区，ISO-3166-1 alpha-2 国家代码（如 SG、CN、US）
 - `AXIS_NODE_HOSTNAME`
 - `AXIS_NODE_STATUS`
 - `AXIS_NODE_UUID_FILE`
@@ -62,18 +63,20 @@ sudo systemctl enable --now axis-node.service
 ## 说明
 
 - 如果本地没有 UUID 文件，`axis-node` 会自动生成 `uuid4`
-- 生成后的 UUID 会持久化到本地文件，下次启动继续复用
+- 生成后的 UUID 默认持久化到 `/data/axis-node/node-uuid`，下次启动继续复用
 - Axis 管理端返回的最终 UUID 会再次回写本地文件，确保身份一致
 - `axis-node` 会优先读取项目根目录 `.env`
 - 通过 systemd 运行时，默认会使用宿主机主机名作为 `AXIS_NODE_HOSTNAME`
 - 如果不通过 systemd 运行，则回退到 `os.Hostname()`
 - `AXIS_NODE_HOSTNAME` 会直接显示在 Axis 管理端的服务器列表中
+- 升级后如果发现旧路径 `./data/node-uuid` 存在且新路径不存在，`axis-node` 会在首次启动时自动迁移到 `/data/axis-node/node-uuid`
 - `AXIS_NODE_REPORT_INTERVAL_SEC` 默认 10 秒
 - `AXIS_NODE_DISK_PATH` 默认 `/`（仅用于兼容，实际会采集全部挂载点）
 - `agent` 启动后会先注册，再按配置周期持续上报最新资源指标
 - 公网 IP 通过外部服务自动探测，探测失败时为空，不阻塞上报
 - 磁盘信息按全部挂载点上报，伪文件系统（proc、tmpfs 等）已过滤
 - Cloudflare 等 DNS 服务商配置只需要放在 Axis 管理平面；`axis-node` 无需配置相关 Token 或域名参数
+- 生产环境需要保证 `/data/axis-node/` 对 `axis-node` 进程可写
 
 ## License
 
