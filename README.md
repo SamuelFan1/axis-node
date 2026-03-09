@@ -13,6 +13,7 @@
 - 基于 `.env` / 环境变量的最小配置加载
 - 周期性上报 CPU 核数、使用率；内存/Swap 总量与已用；全部磁盘挂载点明细
 - 启动时自动探测公网 IP 并随上报发送
+- 如果 Axis 管理平面启用了可选 DNS 模块，则在首次成功上报公网 IP 后由管理平面自动处理 DNS 记录
 
 ## 命令
 
@@ -72,6 +73,7 @@ sudo systemctl enable --now axis-node.service
 - `agent` 启动后会先注册，再按配置周期持续上报最新资源指标
 - 公网 IP 通过外部服务自动探测，探测失败时为空，不阻塞上报
 - 磁盘信息按全部挂载点上报，伪文件系统（proc、tmpfs 等）已过滤
+- Cloudflare 等 DNS 服务商配置只需要放在 Axis 管理平面；`axis-node` 无需配置相关 Token 或域名参数
 
 ## License
 
