@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -14,8 +16,30 @@ import (
 	"github.com/SamuelFan1/axis-node/internal/config"
 	"github.com/SamuelFan1/axis-node/internal/ippublic"
 	"github.com/SamuelFan1/axis-node/internal/metrics"
+	"github.com/SamuelFan1/axis-node/internal/monitoring"
+	monitorproviders "github.com/SamuelFan1/axis-node/internal/monitoring/providers"
 	"github.com/SamuelFan1/axis-node/internal/nodeid"
 )
+
+func buildMonitoringCollector(cfg *config.Config) *monitoring.Collector {
+	if cfg == nil || !cfg.MonitoringEnabled {
+		return nil
+	}
+
+	providers := make([]monitoring.Provider, 0, 1)
+	if cfg.MonitoringGoSidecarEnabled {
+		providers = append(providers, monitorproviders.NewGoSidecarProvider(
+			cfg.SidecarStatsURL,
+			time.Duration(cfg.SidecarStatsTimeoutSec)*time.Second,
+		))
+	}
+
+	if len(providers) == 0 {
+		return nil
+	}
+
+	return monitoring.NewCollector(providers...)
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -110,6 +134,7 @@ func runAgent() error {
 	}
 
 	collector := metrics.NewSystemCollector(cfg.DiskPath)
+	monitorCollector := buildMonitoringCollector(cfg)
 	publicIP := ippublic.Detect()
 	reportOnce := func() error {
 		snapshot, err := collector.Collect()
@@ -125,6 +150,14 @@ func runAgent() error {
 				TotalGB:      d.TotalGB,
 				UsedGB:       d.UsedGB,
 				UsagePercent: d.UsagePercent,
+			}
+		}
+		var monitoringRaw json.RawMessage
+		if monitorCollector != nil {
+			monitoringSnapshot := monitorCollector.Collect(context.Background())
+			monitoringRaw, err = json.Marshal(monitoringSnapshot)
+			if err != nil {
+				return fmt.Errorf("marshal monitoring snapshot: %w", err)
 			}
 		}
 		_, err = client.ReportNode(axisclient.ReportNodeRequest{
@@ -146,6 +179,7 @@ func runAgent() error {
 			SwapUsagePercent:   snapshot.SwapUsagePercent,
 			DiskUsagePercent:   snapshot.DiskUsagePercent,
 			DiskDetails:        diskDetails,
+			MonitoringSnapshot: monitoringRaw,
 		})
 		if err != nil {
 			return err

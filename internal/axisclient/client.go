@@ -64,6 +64,7 @@ type ReportNodeRequest struct {
 	SwapUsagePercent   float64      `json:"swap_usage_percent"`
 	DiskUsagePercent   float64      `json:"disk_usage_percent"`
 	DiskDetails        []DiskDetail `json:"disk_details"`
+	MonitoringSnapshot json.RawMessage `json:"monitoring_snapshot,omitempty"`
 }
 
 type ReportNodeResponse struct {

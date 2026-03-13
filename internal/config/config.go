@@ -9,16 +9,20 @@ import (
 )
 
 type Config struct {
-	ServerURL         string
-	ManagementAddress string
-	Region            string
-	Zone              string
-	Hostname          string
-	Status            string
-	UUIDFile          string
-	SharedToken       string
-	ReportIntervalSec int
-	DiskPath          string
+	ServerURL                  string
+	ManagementAddress          string
+	Region                     string
+	Zone                       string
+	Hostname                   string
+	Status                     string
+	UUIDFile                   string
+	SharedToken                string
+	ReportIntervalSec          int
+	DiskPath                   string
+	MonitoringEnabled          bool
+	MonitoringGoSidecarEnabled bool
+	SidecarStatsURL            string
+	SidecarStatsTimeoutSec     int
 }
 
 func Load() (*Config, error) {
@@ -32,16 +36,20 @@ func Load() (*Config, error) {
 	}
 
 	cfg := &Config{
-		ServerURL:         getEnv("AXIS_NODE_SERVER_URL", "http://127.0.0.1:9090"),
-		ManagementAddress: getEnv("AXIS_NODE_MANAGEMENT_ADDRESS", ""),
-		Region:            getEnv("AXIS_NODE_REGION", ""),
-		Zone:              strings.ToUpper(strings.TrimSpace(getEnv("AXIS_NODE_ZONE", ""))),
-		Hostname:          hostname,
-		Status:            getEnv("AXIS_NODE_STATUS", "up"),
-		UUIDFile:          getEnv("AXIS_NODE_UUID_FILE", "/data/axis-node/node-uuid"),
-		SharedToken:       getEnv("AXIS_NODE_SHARED_TOKEN", ""),
-		ReportIntervalSec: getEnvInt("AXIS_NODE_REPORT_INTERVAL_SEC", 10),
-		DiskPath:          getEnv("AXIS_NODE_DISK_PATH", "/"),
+		ServerURL:                  getEnv("AXIS_NODE_SERVER_URL", "http://127.0.0.1:9090"),
+		ManagementAddress:          getEnv("AXIS_NODE_MANAGEMENT_ADDRESS", ""),
+		Region:                     getEnv("AXIS_NODE_REGION", ""),
+		Zone:                       strings.ToUpper(strings.TrimSpace(getEnv("AXIS_NODE_ZONE", ""))),
+		Hostname:                   hostname,
+		Status:                     getEnv("AXIS_NODE_STATUS", "up"),
+		UUIDFile:                   getEnv("AXIS_NODE_UUID_FILE", "/data/axis-node/node-uuid"),
+		SharedToken:                getEnv("AXIS_NODE_SHARED_TOKEN", ""),
+		ReportIntervalSec:          getEnvInt("AXIS_NODE_REPORT_INTERVAL_SEC", 10),
+		DiskPath:                   getEnv("AXIS_NODE_DISK_PATH", "/"),
+		MonitoringEnabled:          getEnvBool("AXIS_NODE_MONITORING_ENABLED", true),
+		MonitoringGoSidecarEnabled: getEnvBool("AXIS_NODE_MONITORING_GO_SIDECAR_ENABLED", true),
+		SidecarStatsURL:            getEnv("AXIS_NODE_SIDECAR_STATS_URL", "http://127.0.0.1:8086/api/v1/internal/workload-stats"),
+		SidecarStatsTimeoutSec:     getEnvInt("AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC", 3),
 	}
 
 	if cfg.ManagementAddress == "" {
@@ -67,6 +75,9 @@ func Load() (*Config, error) {
 	}
 	if strings.TrimSpace(cfg.DiskPath) == "" {
 		cfg.DiskPath = "/"
+	}
+	if cfg.SidecarStatsTimeoutSec <= 0 {
+		cfg.SidecarStatsTimeoutSec = 3
 	}
 
 	return cfg, nil
@@ -132,4 +143,19 @@ func getEnvInt(key string, defaultValue int) int {
 		return defaultValue
 	}
 	return parsed
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return defaultValue
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultValue
+	}
 }
