@@ -52,7 +52,7 @@ sudo systemctl enable --now axis-node.service
 - `AXIS_NODE_SERVER_URL`
 - `AXIS_NODE_MANAGEMENT_ADDRESS`
 - `AXIS_NODE_REGION`：大洲（asia、europe、australia、north_america、south_america）
-- `AXIS_NODE_ZONE`：可用区，ISO-3166-1 alpha-2 国家代码（如 SG、CN、US）
+- `AXIS_NODE_ZONE`：可用区，ISO-3166-1 alpha-2 国家代码（如 SG、CN、US），必填
 - `AXIS_NODE_HOSTNAME`
 - `AXIS_NODE_STATUS`
 - `AXIS_NODE_UUID_FILE`
@@ -73,6 +73,7 @@ sudo systemctl enable --now axis-node.service
 - `AXIS_NODE_REPORT_INTERVAL_SEC` 默认 10 秒
 - `AXIS_NODE_DISK_PATH` 默认 `/`（仅用于兼容，实际会采集全部挂载点）
 - `agent` 启动后会先注册，再按配置周期持续上报最新资源指标
+- 缺少 `AXIS_NODE_ZONE` 时，`axis-node` 会在启动时直接退出
 - 公网 IP 通过外部服务自动探测，探测失败时为空，不阻塞上报
 - 磁盘信息按全部挂载点上报，伪文件系统（proc、tmpfs 等）已过滤
 - Cloudflare 等 DNS 服务商配置只需要放在 Axis 管理平面；`axis-node` 无需配置相关 Token 或域名参数
