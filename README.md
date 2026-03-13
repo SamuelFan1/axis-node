@@ -36,12 +36,24 @@ cp .env.example .env
 
 ```bash
 # 首次部署或后续更新（脚本会先停止 axis-node.service，
+# 如果检测到 wt0 网卡，还会自动把 .env 中的
+# AXIS_NODE_MANAGEMENT_ADDRESS 更新为 wt0 的 IPv4:端口；
+# 如果存在 NetStone 的 server_region_mapping.yaml，
+# 还会根据主机名前缀自动同步 AXIS_NODE_REGION / AXIS_NODE_ZONE，
 # 再替换二进制与 unit，最后重新启动）
 cd /apps/axis-node
 ./init.sh
 ```
 
 `axis-node.service` 依赖 `axisd.service`，会在其启动后自动拉起。
+
+`init.sh` 的自动同步规则：
+
+- 如果存在 `wt0` 且能读取到 IPv4，则自动把 `.env` 中的 `AXIS_NODE_MANAGEMENT_ADDRESS` 更新为 `<wt0-ip>:<原端口>`
+- 如果原值里没有端口，则默认使用 `9090`
+- 如果未检测到 `wt0`，则保留 `.env` 现有值不变
+- 如果存在 `NetStone/NetStone/conf/server_region_mapping.yaml`，则按当前主机名第一个 `-` 之前的前缀查询 `prefix_map`，并将 `axis_region` / `country_code` 分别写回 `.env` 的 `AXIS_NODE_REGION` / `AXIS_NODE_ZONE`
+- 如果映射文件不存在、主机名前缀未命中或映射字段不完整，则保留 `.env` 现有的 `AXIS_NODE_REGION` / `AXIS_NODE_ZONE`
 
 如果你想手动执行，同样建议先停服务再替换二进制，避免 `/usr/local/bin/axis-node` 被占用：
 

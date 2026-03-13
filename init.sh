@@ -15,6 +15,9 @@ SERVICE_FILE_SOURCE="${PROJECT_ROOT}/deployments/systemd/axis-node.service"
 SERVICE_FILE_TARGET="/etc/systemd/system/${SERVICE_NAME}"
 BUILD_OUTPUT="${PROJECT_ROOT}/axis-node"
 INSTALL_TARGET="/usr/local/bin/axis-node"
+ENV_FILE="${PROJECT_ROOT}/.env"
+ENV_EXAMPLE_FILE="${PROJECT_ROOT}/.env.example"
+REGION_MAPPING_FILE="${PROJECT_ROOT}/../NetStone/NetStone/conf/server_region_mapping.yaml"
 
 if [[ ! -f "${PROJECT_ROOT}/README.md" ]]; then
   echo -e "${RED}Error:${NC} script must live in the axis-node project root."
@@ -24,6 +27,16 @@ fi
 if [[ ! -f "${SERVICE_FILE_SOURCE}" ]]; then
   echo -e "${RED}Error:${NC} missing systemd unit: ${SERVICE_FILE_SOURCE}"
   exit 1
+fi
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  if [[ -f "${ENV_EXAMPLE_FILE}" ]]; then
+    echo -e "${YELLOW}.env not found, copying from .env.example...${NC}"
+    cp "${ENV_EXAMPLE_FILE}" "${ENV_FILE}"
+  else
+    echo -e "${RED}Error:${NC} missing ${ENV_FILE} and ${ENV_EXAMPLE_FILE}."
+    exit 1
+  fi
 fi
 
 if [[ "${EUID}" -eq 0 ]]; then
@@ -44,11 +57,177 @@ run_root() {
   fi
 }
 
+detect_wt0_ipv4() {
+  if ! command -v ip >/dev/null 2>&1; then
+    return 1
+  fi
+  ip -o -4 addr show dev wt0 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1
+}
+
+resolve_node_hostname() {
+  if [[ -n "${HOST_HOSTNAME:-}" ]]; then
+    printf '%s\n' "${HOST_HOSTNAME}"
+    return 0
+  fi
+  if [[ -n "${HOSTNAME:-}" ]]; then
+    printf '%s\n' "${HOSTNAME}"
+    return 0
+  fi
+  if command -v hostname >/dev/null 2>&1; then
+    hostname
+    return 0
+  fi
+  return 1
+}
+
+extract_hostname_prefix() {
+  local hostname_value="$1"
+  printf '%s\n' "${hostname_value}" | awk -F- '{print toupper($1)}'
+}
+
+resolve_region_zone_by_prefix() {
+  local prefix="$1"
+  [[ -f "${REGION_MAPPING_FILE}" ]] || return 1
+
+  awk -v prefix="${prefix}" '
+    $1 == "prefix_map:" { in_map = 1; next }
+    in_map && $0 ~ /^  [A-Z0-9]+:$/ {
+      if (entry == prefix && region != "" && zone != "") {
+        print region "|" zone
+        exit
+      }
+      entry = $1
+      sub(/:$/, "", entry)
+      region = ""
+      zone = ""
+      next
+    }
+    in_map && entry == prefix && $1 == "axis_region:" {
+      region = $2
+      next
+    }
+    in_map && entry == prefix && $1 == "country_code:" {
+      zone = $2
+      next
+    }
+    END {
+      if (entry == prefix && region != "" && zone != "") {
+        print region "|" zone
+      }
+    }
+  ' "${REGION_MAPPING_FILE}"
+}
+
+current_management_port() {
+  if [[ ! -f "${ENV_FILE}" ]]; then
+    echo "9090"
+    return
+  fi
+  python3 - "${ENV_FILE}" <<'PY'
+import pathlib, sys
+env_path = pathlib.Path(sys.argv[1])
+port = "9090"
+for line in env_path.read_text().splitlines():
+    line = line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    if key.strip() != "AXIS_NODE_MANAGEMENT_ADDRESS":
+        continue
+    value = value.strip().strip('"').strip("'")
+    if ":" in value:
+        maybe_port = value.rsplit(":", 1)[1].strip()
+        if maybe_port:
+            port = maybe_port
+    break
+print(port)
+PY
+}
+
+upsert_env_value() {
+  local key="$1"
+  local value="$2"
+  python3 - "${ENV_FILE}" "${key}" "${value}" <<'PY'
+import pathlib, sys
+env_path = pathlib.Path(sys.argv[1])
+target_key = sys.argv[2]
+target_value = sys.argv[3]
+lines = env_path.read_text().splitlines()
+updated = False
+out = []
+for line in lines:
+    stripped = line.strip()
+    if stripped and not stripped.startswith("#") and "=" in line:
+        key, _ = line.split("=", 1)
+        if key.strip() == target_key:
+            out.append(f"{target_key}={target_value}")
+            updated = True
+            continue
+    out.append(line)
+if not updated:
+    if out and out[-1] != "":
+        out.append("")
+    out.append(f"{target_key}={target_value}")
+env_path.write_text("\n".join(out) + "\n")
+PY
+}
+
+sync_region_zone_from_mapping() {
+  local hostname_value prefix mapping region zone
+
+  if [[ ! -f "${REGION_MAPPING_FILE}" ]]; then
+    echo -e "${BLUE}Region mapping file not found; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    return 0
+  fi
+
+  hostname_value="$(resolve_node_hostname || true)"
+  if [[ -z "${hostname_value}" ]]; then
+    echo -e "${YELLOW}Hostname not resolved; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    return 0
+  fi
+
+  prefix="$(extract_hostname_prefix "${hostname_value}")"
+  if [[ -z "${prefix}" ]]; then
+    echo -e "${YELLOW}Hostname prefix is empty for ${hostname_value}; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    return 0
+  fi
+
+  mapping="$(resolve_region_zone_by_prefix "${prefix}" || true)"
+  if [[ -z "${mapping}" ]]; then
+    echo -e "${YELLOW}No region mapping found for hostname prefix ${prefix}; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    return 0
+  fi
+
+  IFS='|' read -r region zone <<< "${mapping}"
+  if [[ -z "${region}" || -z "${zone}" || "${region}" == "null" || "${zone}" == "null" ]]; then
+    echo -e "${YELLOW}Incomplete region mapping for hostname prefix ${prefix}; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    return 0
+  fi
+
+  echo -e "${YELLOW}Resolved hostname prefix:${NC} ${prefix} (hostname: ${hostname_value})"
+  echo -e "${YELLOW}Updating AXIS_NODE_REGION / AXIS_NODE_ZONE in .env to:${NC} ${region} / ${zone}"
+  upsert_env_value "AXIS_NODE_REGION" "${region}"
+  upsert_env_value "AXIS_NODE_ZONE" "${zone}"
+}
+
 echo -e "${CYAN}========================================${NC}"
 echo -e "${CYAN}      axis-node Update Installer        ${NC}"
 echo -e "${CYAN}========================================${NC}"
 
 echo -e "${BLUE}Project root:${NC} ${PROJECT_ROOT}"
+
+sync_region_zone_from_mapping
+
+WT0_IPV4="$(detect_wt0_ipv4 || true)"
+if [[ -n "${WT0_IPV4}" ]]; then
+  MANAGEMENT_PORT="$(current_management_port)"
+  NEW_MANAGEMENT_ADDRESS="${WT0_IPV4}:${MANAGEMENT_PORT}"
+  echo -e "${YELLOW}Detected wt0 IPv4:${NC} ${WT0_IPV4}"
+  echo -e "${YELLOW}Updating AXIS_NODE_MANAGEMENT_ADDRESS in .env to:${NC} ${NEW_MANAGEMENT_ADDRESS}"
+  upsert_env_value "AXIS_NODE_MANAGEMENT_ADDRESS" "${NEW_MANAGEMENT_ADDRESS}"
+else
+  echo -e "${BLUE}wt0 IPv4 not found; keeping existing AXIS_NODE_MANAGEMENT_ADDRESS in .env.${NC}"
+fi
 
 if ! command -v go >/dev/null 2>&1; then
   echo -e "${RED}Error:${NC} Go toolchain not found in PATH."
