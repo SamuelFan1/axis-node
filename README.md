@@ -81,8 +81,13 @@ sudo systemctl enable --now axis-node.service
 - `AXIS_NODE_SHARED_TOKEN`
 - `AXIS_NODE_MONITORING_ENABLED`
 - `AXIS_NODE_MONITORING_GO_SIDECAR_ENABLED`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED`
 - `AXIS_NODE_SIDECAR_STATS_URL`
 - `AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_TIMEOUT_SEC`
 
 ## 说明
 
@@ -98,8 +103,13 @@ sudo systemctl enable --now axis-node.service
 - `AXIS_NODE_DISK_PATH` 默认 `/`（仅用于兼容，实际会采集全部挂载点）
 - `AXIS_NODE_MONITORING_ENABLED` 默认 `true`
 - `AXIS_NODE_MONITORING_GO_SIDECAR_ENABLED` 默认 `true`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED` 默认 `false`
 - `AXIS_NODE_SIDECAR_STATS_URL` 默认 `http://127.0.0.1:8086/api/v1/internal/workload-stats`
 - `AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC` 默认 3 秒
+- `AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME` 默认 `cloudflared`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME` 默认 `cloudflared-health-monitor`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL` 默认 `http://localhost:8085/health/`
+- `AXIS_NODE_MONITORING_CF_TUNNEL_TIMEOUT_SEC` 默认 3 秒
 - `agent` 启动后会先注册，再按配置周期持续上报最新资源指标
 - `monitoring_snapshot` 是通用监控 envelope；默认会启用 provider 采集，也可通过 `AXIS_NODE_MONITORING_ENABLED=false` 整体关闭
 - `go-sidecar` 本地监控 provider 默认启用，如需关闭可设置 `AXIS_NODE_MONITORING_GO_SIDECAR_ENABLED=false`
@@ -112,7 +122,7 @@ sudo systemctl enable --now axis-node.service
 
 ## 可选本地监控 Provider
 
-`axis-node` 已经具备通用监控 provider 框架，默认启用 `go-sidecar` 本地监控 provider；如果目标环境没有 `go-sidecar`，可以显式关闭。
+`axis-node` 已经具备通用监控 provider 框架，默认启用 `go-sidecar` 本地监控 provider；如果目标环境没有 `go-sidecar`，可以显式关闭。也可以按需启用 Cloudflare Tunnel provider，将本机 `cloudflared` 运行状态一并上报给 Axis。
 
 启用 `go-sidecar` workload 采集时，至少需要：
 
@@ -130,6 +140,24 @@ AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC=3
 - provider 采集失败不会中断整次节点心跳，只会在快照中记录该 source 的错误状态
 - 当 `axis-node` 跑在宿主机而 `go-sidecar` 跑在 Docker 容器时，`go-sidecar` 需要把宿主机/容器网络来源加入 `WORKLOAD_STATS_TRUSTED_CIDRS`
 - 当前 NetStone 默认部署建议至少信任：`127.0.0.1/32,10.10.0.0/16,10.8.0.0/16`
+
+启用 Cloudflare Tunnel provider 时，可额外配置：
+
+```env
+AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED=true
+AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME=cloudflared
+AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME=cloudflared-health-monitor
+AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL=http://localhost:8085/health/
+AXIS_NODE_MONITORING_CF_TUNNEL_TIMEOUT_SEC=3
+```
+
+行为说明：
+
+- provider 会检查 `cloudflared` systemd service 是否为 `active`
+- 如果配置了 monitor service 名称，也会要求该 service 为 `active`
+- 如果配置了 health URL，也会要求该 URL 返回 `200`
+- 任一检查失败时，该 source 会以 `error` 状态写入 `monitoring_snapshot`
+- 是否将该错误状态进一步影响节点 `up/down`，由 Axis 管理平面的策略开关决定
 
 ## License
 

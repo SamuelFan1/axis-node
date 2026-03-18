@@ -21,8 +21,13 @@ type Config struct {
 	DiskPath                   string
 	MonitoringEnabled          bool
 	MonitoringGoSidecarEnabled bool
+	MonitoringCFTunnelEnabled  bool
 	SidecarStatsURL            string
 	SidecarStatsTimeoutSec     int
+	CFTunnelServiceName        string
+	CFTunnelMonitorServiceName string
+	CFTunnelHealthURL          string
+	CFTunnelTimeoutSec         int
 }
 
 func Load() (*Config, error) {
@@ -48,8 +53,13 @@ func Load() (*Config, error) {
 		DiskPath:                   getEnv("AXIS_NODE_DISK_PATH", "/"),
 		MonitoringEnabled:          getEnvBool("AXIS_NODE_MONITORING_ENABLED", true),
 		MonitoringGoSidecarEnabled: getEnvBool("AXIS_NODE_MONITORING_GO_SIDECAR_ENABLED", true),
+		MonitoringCFTunnelEnabled:  getEnvBool("AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED", false),
 		SidecarStatsURL:            getEnv("AXIS_NODE_SIDECAR_STATS_URL", "http://127.0.0.1:8086/api/v1/internal/workload-stats"),
 		SidecarStatsTimeoutSec:     getEnvInt("AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC", 3),
+		CFTunnelServiceName:        getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME", "cloudflared"),
+		CFTunnelMonitorServiceName: getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME", "cloudflared-health-monitor"),
+		CFTunnelHealthURL:          getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL", "http://localhost:8085/health/"),
+		CFTunnelTimeoutSec:         getEnvInt("AXIS_NODE_MONITORING_CF_TUNNEL_TIMEOUT_SEC", 3),
 	}
 
 	if cfg.ManagementAddress == "" {
@@ -78,6 +88,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.SidecarStatsTimeoutSec <= 0 {
 		cfg.SidecarStatsTimeoutSec = 3
+	}
+	if cfg.CFTunnelTimeoutSec <= 0 {
+		cfg.CFTunnelTimeoutSec = 3
 	}
 
 	return cfg, nil
