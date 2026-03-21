@@ -64,6 +64,42 @@ detect_wt0_ipv4() {
   ip -o -4 addr show dev wt0 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -n1
 }
 
+resolve_region_by_wt0_ip() {
+  local wt0_ip="$1"
+  python3 - "${ENV_FILE}" "${wt0_ip}" <<'PY'
+import pathlib, sys
+
+env_path = pathlib.Path(sys.argv[1])
+wt0_ip = sys.argv[2].strip()
+if not wt0_ip or not env_path.exists():
+    raise SystemExit(0)
+
+env = {}
+for line in env_path.read_text().splitlines():
+    line = line.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    key, value = line.split("=", 1)
+    env[key.strip()] = value.strip().strip('"').strip("'")
+
+mapping = [
+    ("north_america", "AXIS_WT0_REGION_NORTH_AMERICA_PREFIXES"),
+    ("asia", "AXIS_WT0_REGION_ASIA_PREFIXES"),
+    ("australia", "AXIS_WT0_REGION_AUSTRALIA_PREFIXES"),
+    ("europe", "AXIS_WT0_REGION_EUROPE_PREFIXES"),
+    ("south_america", "AXIS_WT0_REGION_SOUTH_AMERICA_PREFIXES"),
+]
+
+for region, key in mapping:
+    raw = env.get(key, "")
+    prefixes = [item.strip() for item in raw.split(",") if item.strip()]
+    for prefix in prefixes:
+        if wt0_ip.startswith(prefix):
+            print(region)
+            raise SystemExit(0)
+PY
+}
+
 resolve_node_hostname() {
   if [[ -n "${HOST_HOSTNAME:-}" ]]; then
     printf '%s\n' "${HOST_HOSTNAME}"
@@ -173,40 +209,57 @@ PY
 }
 
 sync_region_zone_from_mapping() {
-  local hostname_value prefix mapping region zone
+  local hostname_value prefix mapping region zone wt0_ip wt0_region
+
+  wt0_ip="$(detect_wt0_ipv4 || true)"
+  if [[ -n "${wt0_ip}" ]]; then
+    wt0_region="$(resolve_region_by_wt0_ip "${wt0_ip}" || true)"
+    if [[ -n "${wt0_region}" && "${wt0_region}" != "null" ]]; then
+      echo -e "${YELLOW}Detected wt0 IPv4:${NC} ${wt0_ip}"
+      echo -e "${YELLOW}Updating AXIS_NODE_REGION in .env to:${NC} ${wt0_region}"
+      upsert_env_value "AXIS_NODE_REGION" "${wt0_region}"
+    else
+      echo -e "${BLUE}wt0 IPv4 detected but no AXIS_WT0_REGION_* prefix matched; falling back to hostname mapping for region/zone.${NC}"
+    fi
+  else
+    echo -e "${BLUE}wt0 IPv4 not found; falling back to hostname mapping for region/zone.${NC}"
+  fi
 
   if [[ ! -f "${REGION_MAPPING_FILE}" ]]; then
-    echo -e "${BLUE}Region mapping file not found; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    echo -e "${BLUE}Region mapping file not found; keeping existing AXIS_NODE_ZONE in .env.${NC}"
     return 0
   fi
 
   hostname_value="$(resolve_node_hostname || true)"
   if [[ -z "${hostname_value}" ]]; then
-    echo -e "${YELLOW}Hostname not resolved; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    echo -e "${YELLOW}Hostname not resolved; keeping existing AXIS_NODE_ZONE in .env.${NC}"
     return 0
   fi
 
   prefix="$(extract_hostname_prefix "${hostname_value}")"
   if [[ -z "${prefix}" ]]; then
-    echo -e "${YELLOW}Hostname prefix is empty for ${hostname_value}; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    echo -e "${YELLOW}Hostname prefix is empty for ${hostname_value}; keeping existing AXIS_NODE_ZONE in .env.${NC}"
     return 0
   fi
 
   mapping="$(resolve_region_zone_by_prefix "${prefix}" || true)"
   if [[ -z "${mapping}" ]]; then
-    echo -e "${YELLOW}No region mapping found for hostname prefix ${prefix}; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    echo -e "${YELLOW}No region mapping found for hostname prefix ${prefix}; keeping existing AXIS_NODE_ZONE in .env.${NC}"
     return 0
   fi
 
   IFS='|' read -r region zone <<< "${mapping}"
   if [[ -z "${region}" || -z "${zone}" || "${region}" == "null" || "${zone}" == "null" ]]; then
-    echo -e "${YELLOW}Incomplete region mapping for hostname prefix ${prefix}; keeping existing AXIS_NODE_REGION and AXIS_NODE_ZONE in .env.${NC}"
+    echo -e "${YELLOW}Incomplete region mapping for hostname prefix ${prefix}; keeping existing AXIS_NODE_ZONE in .env.${NC}"
     return 0
   fi
 
   echo -e "${YELLOW}Resolved hostname prefix:${NC} ${prefix} (hostname: ${hostname_value})"
-  echo -e "${YELLOW}Updating AXIS_NODE_REGION / AXIS_NODE_ZONE in .env to:${NC} ${region} / ${zone}"
-  upsert_env_value "AXIS_NODE_REGION" "${region}"
+  if [[ -z "${wt0_region:-}" ]]; then
+    echo -e "${YELLOW}Updating AXIS_NODE_REGION in .env to:${NC} ${region}"
+    upsert_env_value "AXIS_NODE_REGION" "${region}"
+  fi
+  echo -e "${YELLOW}Updating AXIS_NODE_ZONE in .env to:${NC} ${zone}"
   upsert_env_value "AXIS_NODE_ZONE" "${zone}"
 }
 

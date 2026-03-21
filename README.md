@@ -38,8 +38,9 @@ cp .env.example .env
 # 首次部署或后续更新（脚本会先停止 axis-node.service，
 # 如果检测到 wt0 网卡，还会自动把 .env 中的
 # AXIS_NODE_MANAGEMENT_ADDRESS 更新为 wt0 的 IPv4:端口；
+# 并优先按 .env 中的 AXIS_WT0_REGION_* 前缀规则自动同步 AXIS_NODE_REGION；
 # 如果存在 NetStone 的 server_region_mapping.yaml，
-# 还会根据主机名前缀自动同步 AXIS_NODE_REGION / AXIS_NODE_ZONE，
+# 还会根据主机名前缀补齐 AXIS_NODE_ZONE，并在未命中 wt0 规则时回退同步 AXIS_NODE_REGION，
 # 再替换二进制与 unit，最后重新启动）
 cd /apps/axis-node
 ./init.sh
@@ -51,9 +52,10 @@ cd /apps/axis-node
 
 - 如果存在 `wt0` 且能读取到 IPv4，则自动把 `.env` 中的 `AXIS_NODE_MANAGEMENT_ADDRESS` 更新为 `<wt0-ip>:<原端口>`
 - 如果原值里没有端口，则默认使用 `9090`
-- 如果未检测到 `wt0`，则保留 `.env` 现有值不变
-- 如果存在 `NetStone/NetStone/conf/server_region_mapping.yaml`，则按当前主机名第一个 `-` 之前的前缀查询 `prefix_map`，并将 `axis_region` / `country_code` 分别写回 `.env` 的 `AXIS_NODE_REGION` / `AXIS_NODE_ZONE`
-- 如果映射文件不存在、主机名前缀未命中或映射字段不完整，则保留 `.env` 现有的 `AXIS_NODE_REGION` / `AXIS_NODE_ZONE`
+- 如果存在 `AXIS_WT0_REGION_*` 前缀配置且命中当前 `wt0` IPv4，则优先把 `.env` 中的 `AXIS_NODE_REGION` 更新为匹配的大洲
+- 如果未检测到 `wt0`，或 `wt0` 未命中任何前缀，则回退到现有的 hostname 前缀映射逻辑
+- 如果存在 `NetStone/NetStone/conf/server_region_mapping.yaml`，则按当前主机名第一个 `-` 之前的前缀查询 `prefix_map`，并将 `country_code` 写回 `.env` 的 `AXIS_NODE_ZONE`
+- 如果 hostname 映射同时包含 `axis_region`，且本次未命中 `wt0` 规则，则也会把 `AXIS_NODE_REGION` 回填为映射值
 
 如果你想手动执行，同样建议先停服务再替换二进制，避免 `/usr/local/bin/axis-node` 被占用：
 
@@ -73,6 +75,7 @@ sudo systemctl enable --now axis-node.service
 - `AXIS_NODE_MANAGEMENT_ADDRESS`
 - `AXIS_NODE_REGION`：大洲（asia、europe、australia、north_america、south_america）
 - `AXIS_NODE_ZONE`：可用区，ISO-3166-1 alpha-2 国家代码（如 SG、CN、US），必填
+- `AXIS_WT0_REGION_NORTH_AMERICA_PREFIXES`、`AXIS_WT0_REGION_ASIA_PREFIXES` 等：`init.sh` 用于根据 `wt0` IPv4 前缀自动判定 `AXIS_NODE_REGION` 的可选配置
 - `AXIS_NODE_HOSTNAME`
 - `AXIS_NODE_STATUS`
 - `AXIS_NODE_UUID_FILE`
