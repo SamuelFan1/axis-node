@@ -48,6 +48,15 @@ cd /apps/axis-node
 
 `axis-node.service` 依赖 `axisd.service`，会在其启动后自动拉起。
 
+运维约束：
+
+- [`/apps/axis-node/.env`]( /apps/axis-node/.env ) 是节点本地运行态文件，不应通过 `/apps` 代码包跨机分发。
+- 节点相关字段：
+  - `AXIS_NODE_MANAGEMENT_ADDRESS`
+  - `AXIS_NODE_REGION`
+  - `AXIS_NODE_ZONE`
+  统一由 `axis-node/init.sh` 基于本机 `wt0` 和 hostname 自动修正。
+
 `init.sh` 的自动同步规则：
 
 - 如果存在 `wt0` 且能读取到 IPv4，则自动把 `.env` 中的 `AXIS_NODE_MANAGEMENT_ADDRESS` 更新为 `<wt0-ip>:<原端口>`
