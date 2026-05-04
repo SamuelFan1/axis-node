@@ -82,7 +82,7 @@ sudo systemctl enable --now axis-node.service
 
 - `AXIS_NODE_SERVER_URL`
 - `AXIS_NODE_MANAGEMENT_ADDRESS`
-- `AXIS_NODE_REGION`：大洲（asia、europe、australia、north_america、south_america）
+- `AXIS_NODE_REGION`：大洲（asia、europe、australia、north_america、middle_east）
 - `AXIS_NODE_ZONE`：可用区，ISO-3166-1 alpha-2 国家代码（如 SG、CN、US），必填
 - `AXIS_WT0_REGION_NORTH_AMERICA_PREFIXES`、`AXIS_WT0_REGION_ASIA_PREFIXES` 等：`init.sh` 用于根据 `wt0` IPv4 前缀自动判定 `AXIS_NODE_REGION` 的可选配置
 - `AXIS_NODE_HOSTNAME`
