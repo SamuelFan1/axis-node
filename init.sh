@@ -18,6 +18,9 @@ INSTALL_TARGET="/usr/local/bin/axis-node"
 ENV_FILE="${PROJECT_ROOT}/.env"
 ENV_EXAMPLE_FILE="${PROJECT_ROOT}/.env.example"
 REGION_MAPPING_FILE="${PROJECT_ROOT}/../NetStone/NetStone/conf/server_region_mapping.yaml"
+GO_TOOLCHAIN_BASE="/usr/local"
+GO_TOOLCHAIN_DEFAULT_PATCH="${GO_TOOLCHAIN_DEFAULT_PATCH:-0}"
+GO_CMD=""
 
 if [[ ! -f "${PROJECT_ROOT}/README.md" ]]; then
   echo -e "${RED}Error:${NC} script must live in the axis-node project root."
@@ -55,6 +58,124 @@ run_root() {
   else
     "$@"
   fi
+}
+
+go_required_version() {
+  awk '$1 == "go" { print $2; exit }' "${PROJECT_ROOT}/go.mod"
+}
+
+go_version_number() {
+  local go_bin="$1"
+  GOTOOLCHAIN=local "${go_bin}" version 2>/dev/null | awk '{print $3}' | sed 's/^go//' || true
+}
+
+version_at_least() {
+  local current="$1"
+  local required="$2"
+  python3 - "${current}" "${required}" <<'PY'
+import sys
+
+def parts(value):
+    out = []
+    for item in value.split("."):
+        try:
+            out.append(int(item))
+        except ValueError:
+            out.append(0)
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out[:3])
+
+raise SystemExit(0 if parts(sys.argv[1]) >= parts(sys.argv[2]) else 1)
+PY
+}
+
+go_download_arch() {
+  local machine
+  machine="$(uname -m)"
+  case "${machine}" in
+    x86_64|amd64)
+      echo "amd64"
+      ;;
+    aarch64|arm64)
+      echo "arm64"
+      ;;
+    *)
+      echo -e "${RED}Error:${NC} unsupported Go architecture: ${machine}" >&2
+      return 1
+      ;;
+  esac
+}
+
+go_install_version() {
+  local required="$1"
+  local dot_count
+  dot_count="$(awk -F. '{print NF-1}' <<< "${required}")"
+  if [[ "${dot_count}" -lt 2 ]]; then
+    printf '%s.%s\n' "${required}" "${GO_TOOLCHAIN_DEFAULT_PATCH}"
+  else
+    printf '%s\n' "${required}"
+  fi
+}
+
+ensure_go_toolchain() {
+  local required install_version bundled_go system_go system_version arch url tmp_dir archive
+
+  required="$(go_required_version)"
+  if [[ -z "${required}" ]]; then
+    echo -e "${RED}Error:${NC} go.mod does not declare a Go version."
+    exit 1
+  fi
+
+  if command -v go >/dev/null 2>&1; then
+    system_go="$(command -v go)"
+    system_version="$(go_version_number "${system_go}")"
+    if [[ -n "${system_version}" ]] && version_at_least "${system_version}" "${required}"; then
+      GO_CMD="${system_go}"
+      echo -e "${BLUE}Using system Go toolchain:${NC} $("${GO_CMD}" version)"
+      return 0
+    fi
+  fi
+
+  install_version="$(go_install_version "${required}")"
+  bundled_go="${GO_TOOLCHAIN_BASE}/go${install_version}/bin/go"
+  if [[ -x "${bundled_go}" ]]; then
+    system_version="$(go_version_number "${bundled_go}")"
+    if [[ -n "${system_version}" ]] && version_at_least "${system_version}" "${required}"; then
+      GO_CMD="${bundled_go}"
+      echo -e "${BLUE}Using local Go toolchain:${NC} $("${GO_CMD}" version)"
+      return 0
+    fi
+  fi
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo -e "${RED}Error:${NC} curl is required to install Go ${install_version}."
+    exit 1
+  fi
+
+  if ! command -v tar >/dev/null 2>&1; then
+    echo -e "${RED}Error:${NC} tar is required to install Go ${install_version}."
+    exit 1
+  fi
+
+  arch="$(go_download_arch)"
+  url="https://go.dev/dl/go${install_version}.linux-${arch}.tar.gz"
+  tmp_dir="$(mktemp -d)"
+  archive="${tmp_dir}/go${install_version}.linux-${arch}.tar.gz"
+
+  echo -e "${YELLOW}Installing Go ${install_version} for linux/${arch}...${NC}"
+  curl -fL --retry 3 -o "${archive}" "${url}"
+  run_root rm -rf "${GO_TOOLCHAIN_BASE}/go${install_version}"
+  run_root mkdir -p "${GO_TOOLCHAIN_BASE}/go${install_version}"
+  run_root tar -C "${GO_TOOLCHAIN_BASE}/go${install_version}" --strip-components=1 -xzf "${archive}"
+  rm -rf "${tmp_dir}"
+
+  GO_CMD="${bundled_go}"
+  if [[ ! -x "${GO_CMD}" ]]; then
+    echo -e "${RED}Error:${NC} installed Go binary not found: ${GO_CMD}"
+    exit 1
+  fi
+  echo -e "${BLUE}Using installed Go toolchain:${NC} $("${GO_CMD}" version)"
 }
 
 detect_wt0_ipv4() {
@@ -282,20 +403,17 @@ else
   echo -e "${BLUE}wt0 IPv4 not found; keeping existing AXIS_NODE_MANAGEMENT_ADDRESS in .env.${NC}"
 fi
 
-if ! command -v go >/dev/null 2>&1; then
-  echo -e "${RED}Error:${NC} Go toolchain not found in PATH."
-  exit 1
-fi
-
 if ! command -v systemctl >/dev/null 2>&1; then
   echo -e "${RED}Error:${NC} systemctl not found."
   exit 1
 fi
 
+ensure_go_toolchain
+
 echo -e "${YELLOW}Building latest axis-node binary...${NC}"
 (
   cd "${PROJECT_ROOT}"
-  go build -o "${BUILD_OUTPUT}" ./cmd/axis-node
+  GOTOOLCHAIN=local "${GO_CMD}" build -o "${BUILD_OUTPUT}" ./cmd/axis-node
 )
 
 if run_root systemctl list-unit-files "${SERVICE_NAME}" >/dev/null 2>&1; then
