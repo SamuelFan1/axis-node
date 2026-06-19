@@ -24,6 +24,8 @@ type Config struct {
 	MonitoringCFTunnelEnabled  bool
 	SidecarStatsURL            string
 	SidecarStatsTimeoutSec     int
+	YtDlpHQReadinessURL        string
+	YtDlpHQReadinessTimeoutSec int
 	CFTunnelServiceName        string
 	CFTunnelMonitorServiceName string
 	CFTunnelHealthURL          string
@@ -56,6 +58,8 @@ func Load() (*Config, error) {
 		MonitoringCFTunnelEnabled:  getEnvBool("AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED", false),
 		SidecarStatsURL:            getEnv("AXIS_NODE_SIDECAR_STATS_URL", "http://127.0.0.1:8086/api/v1/internal/workload-stats"),
 		SidecarStatsTimeoutSec:     getEnvInt("AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC", 3),
+		YtDlpHQReadinessURL:        getEnv("AXIS_NODE_YT_DLP_HQ_READY_URL", "http://127.0.0.1:8888/health/ready"),
+		YtDlpHQReadinessTimeoutSec: getEnvInt("AXIS_NODE_YT_DLP_HQ_READY_TIMEOUT_SEC", 3),
 		CFTunnelServiceName:        getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME", "cloudflared"),
 		CFTunnelMonitorServiceName: getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME", "cloudflared-health-monitor"),
 		CFTunnelHealthURL:          getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL", "http://localhost:8085/health/"),
@@ -88,6 +92,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.SidecarStatsTimeoutSec <= 0 {
 		cfg.SidecarStatsTimeoutSec = 3
+	}
+	if cfg.YtDlpHQReadinessTimeoutSec <= 0 {
+		cfg.YtDlpHQReadinessTimeoutSec = 3
 	}
 	if cfg.CFTunnelTimeoutSec <= 0 {
 		cfg.CFTunnelTimeoutSec = 3

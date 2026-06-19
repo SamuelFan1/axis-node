@@ -26,13 +26,17 @@ func buildMonitoringCollector(cfg *config.Config) *monitoring.Collector {
 		return nil
 	}
 
-	providers := make([]monitoring.Provider, 0, 2)
+	providers := make([]monitoring.Provider, 0, 3)
 	if cfg.MonitoringGoSidecarEnabled {
 		providers = append(providers, monitorproviders.NewGoSidecarProvider(
 			cfg.SidecarStatsURL,
 			time.Duration(cfg.SidecarStatsTimeoutSec)*time.Second,
 		))
 	}
+	providers = append(providers, monitorproviders.NewYtDlpHQProvider(
+		cfg.YtDlpHQReadinessURL,
+		time.Duration(cfg.YtDlpHQReadinessTimeoutSec)*time.Second,
+	))
 	if cfg.MonitoringCFTunnelEnabled {
 		providers = append(providers, monitorproviders.NewCloudflaredProvider(
 			cfg.CFTunnelServiceName,

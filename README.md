@@ -115,9 +115,11 @@ sudo systemctl enable --now axis-node.service
 - `AXIS_NODE_DISK_PATH` 默认 `/`（仅用于兼容，实际会采集全部挂载点）
 - `AXIS_NODE_MONITORING_ENABLED` 默认 `true`
 - `AXIS_NODE_MONITORING_GO_SIDECAR_ENABLED` 默认 `true`
-- `AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED` 默认 `false`
+- NetStone 部署模板中 `AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED` 默认 `true`；独立部署可显式关闭
 - `AXIS_NODE_SIDECAR_STATS_URL` 默认 `http://127.0.0.1:8086/api/v1/internal/workload-stats`
 - `AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC` 默认 3 秒
+- `AXIS_NODE_YT_DLP_HQ_READY_URL` 默认 `http://127.0.0.1:8888/health/ready`
+- `AXIS_NODE_YT_DLP_HQ_READY_TIMEOUT_SEC` 默认 3 秒
 - `AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME` 默认 `cloudflared`
 - `AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME` 默认 `cloudflared-health-monitor`
 - `AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL` 默认 `http://localhost:8085/health/`
@@ -134,7 +136,7 @@ sudo systemctl enable --now axis-node.service
 
 ## 可选本地监控 Provider
 
-`axis-node` 已经具备通用监控 provider 框架，默认启用 `go-sidecar` 本地监控 provider；如果目标环境没有 `go-sidecar`，可以显式关闭。也可以按需启用 Cloudflare Tunnel provider，将本机 `cloudflared` 运行状态一并上报给 Axis。
+`axis-node` 已经具备通用监控 provider 框架，默认启用 `go-sidecar` 本地监控 provider；如果目标环境没有 `go-sidecar`，可以显式关闭。监控启用时会自动探测本机 `yt-dlp-hq` readiness；不可达只表示该节点未部署 HQ，不影响普通节点健康。NetStone 部署模板同时启用 Cloudflare Tunnel provider，将本机 `cloudflared` 运行状态上报给 Axis。
 
 启用 `go-sidecar` workload 采集时，至少需要：
 
@@ -149,6 +151,7 @@ AXIS_NODE_SIDECAR_STATS_TIMEOUT_SEC=3
 
 - `monitoring_snapshot` 是通用 JSON 快照，不绑定某个具体业务
 - `go-sidecar` 只是当前内置的一个 provider，后续可以继续扩展其他本地采集源
+- `yt-dlp-hq` provider 固定上报名为 `yt-dlp-hq` 的 source，只有本机 `127.0.0.1:8888` 服务健康且 YouTube session 已加载时才为 `ok`
 - provider 采集失败不会中断整次节点心跳，只会在快照中记录该 source 的错误状态
 - 当 `axis-node` 跑在宿主机而 `go-sidecar` 跑在 Docker 容器时，`go-sidecar` 需要把宿主机/容器网络来源加入 `WORKLOAD_STATS_TRUSTED_CIDRS`
 - 当前 NetStone 默认部署建议至少信任：`127.0.0.1/32,10.10.0.0/16,10.8.0.0/16`
@@ -170,6 +173,11 @@ AXIS_NODE_MONITORING_CF_TUNNEL_TIMEOUT_SEC=3
 - 如果配置了 health URL，也会要求该 URL 返回 `200`
 - 任一检查失败时，该 source 会以 `error` 状态写入 `monitoring_snapshot`
 - 是否将该错误状态进一步影响节点 `up/down`，由 Axis 管理平面的策略开关决定
+- 当 Axis 配置 `AXIS_NODE_REQUIRE_CF_TUNNEL_HEALTH=true` 时，节点必须上报名为 `cloudflared` 且状态为 `ok` 的 source
+- 在上述强制策略下关闭 Cloudflare Tunnel provider，会导致 Axis 将节点上报的 `up` 改写为 `down`
+- `init.sh` 检测到 `cloudflared.service` 与 `cloudflared-health-monitor.service` 均已安装时，会自动启用该 provider
+- 当前 provider 默认同时检查 `cloudflared.service`、`cloudflared-health-monitor.service` 和 `http://localhost:8085/health/`
+- 如果管理平面未要求 Cloudflare Tunnel 健康，独立部署仍可显式设置 `AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED=false`
 
 ## License
 

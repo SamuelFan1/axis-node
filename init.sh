@@ -329,6 +329,20 @@ env_path.write_text("\n".join(out) + "\n")
 PY
 }
 
+sync_cloudflared_monitoring_config() {
+  local cloudflared_unit="cloudflared.service"
+  local monitor_unit="cloudflared-health-monitor.service"
+
+  if systemctl cat "${cloudflared_unit}" >/dev/null 2>&1 &&
+     systemctl cat "${monitor_unit}" >/dev/null 2>&1; then
+    echo -e "${YELLOW}Detected Cloudflare Tunnel services; enabling axis-node cloudflared monitoring provider.${NC}"
+    upsert_env_value "AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED" "true"
+    return 0
+  fi
+
+  echo -e "${YELLOW}Cloudflare Tunnel service units are incomplete; keeping AXIS_NODE_MONITORING_CF_TUNNEL_ENABLED unchanged.${NC}"
+}
+
 sync_region_zone_from_mapping() {
   local hostname_value prefix mapping region zone wt0_ip wt0_region
 
@@ -407,6 +421,8 @@ if ! command -v systemctl >/dev/null 2>&1; then
   echo -e "${RED}Error:${NC} systemctl not found."
   exit 1
 fi
+
+sync_cloudflared_monitoring_config
 
 ensure_go_toolchain
 
