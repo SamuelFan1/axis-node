@@ -29,6 +29,8 @@ type Config struct {
 	CFTunnelServiceName        string
 	CFTunnelMonitorServiceName string
 	CFTunnelHealthURL          string
+	CFTunnelMode               string
+	CFTunnelReadyURL           string
 	CFTunnelTimeoutSec         int
 }
 
@@ -63,6 +65,8 @@ func Load() (*Config, error) {
 		CFTunnelServiceName:        getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_SERVICE_NAME", "cloudflared"),
 		CFTunnelMonitorServiceName: getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_MONITOR_SERVICE_NAME", "cloudflared-health-monitor"),
 		CFTunnelHealthURL:          getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_HEALTH_URL", "http://localhost:8085/health/"),
+		CFTunnelMode:               strings.ToLower(strings.TrimSpace(getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_MODE", "systemd"))),
+		CFTunnelReadyURL:           getEnv("AXIS_NODE_MONITORING_CF_TUNNEL_READY_URL", "http://127.0.0.1:2000/ready"),
 		CFTunnelTimeoutSec:         getEnvInt("AXIS_NODE_MONITORING_CF_TUNNEL_TIMEOUT_SEC", 3),
 	}
 
@@ -98,6 +102,9 @@ func Load() (*Config, error) {
 	}
 	if cfg.CFTunnelTimeoutSec <= 0 {
 		cfg.CFTunnelTimeoutSec = 3
+	}
+	if cfg.CFTunnelMode == "" {
+		cfg.CFTunnelMode = "systemd"
 	}
 
 	return cfg, nil

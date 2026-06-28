@@ -42,6 +42,8 @@ func buildMonitoringCollector(cfg *config.Config) *monitoring.Collector {
 			cfg.CFTunnelServiceName,
 			cfg.CFTunnelMonitorServiceName,
 			cfg.CFTunnelHealthURL,
+			cfg.CFTunnelMode,
+			cfg.CFTunnelReadyURL,
 			time.Duration(cfg.CFTunnelTimeoutSec)*time.Second,
 		))
 	}

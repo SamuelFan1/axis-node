@@ -18,6 +18,8 @@ type CloudflaredProvider struct {
 	serviceName        string
 	monitorServiceName string
 	healthURL          string
+	mode               string
+	readyURL           string
 	statusRunner       serviceStatusRunner
 	healthRunner       healthStatusRunner
 }
@@ -29,17 +31,26 @@ type cloudflaredPayload struct {
 	MonitorServiceStatus string `json:"monitor_service_status,omitempty"`
 	HealthURL            string `json:"health_url,omitempty"`
 	HealthStatusCode     int    `json:"health_status_code,omitempty"`
+	Mode                 string `json:"mode"`
+	ReadyURL             string `json:"ready_url,omitempty"`
+	ReadyStatusCode      int    `json:"ready_status_code,omitempty"`
 }
 
-func NewCloudflaredProvider(serviceName, monitorServiceName, healthURL string, timeout time.Duration) *CloudflaredProvider {
+func NewCloudflaredProvider(serviceName, monitorServiceName, healthURL, mode, readyURL string, timeout time.Duration) *CloudflaredProvider {
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
 	client := &http.Client{Timeout: timeout}
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	if mode == "" {
+		mode = "systemd"
+	}
 	return &CloudflaredProvider{
 		serviceName:        strings.TrimSpace(serviceName),
 		monitorServiceName: strings.TrimSpace(monitorServiceName),
 		healthURL:          strings.TrimSpace(healthURL),
+		mode:               mode,
+		readyURL:           strings.TrimSpace(readyURL),
 		statusRunner:       systemctlStatusRunner,
 		healthRunner: func(ctx context.Context, url string) (int, error) {
 			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -69,40 +80,22 @@ func (p *CloudflaredProvider) Collect(ctx context.Context) (monitoring.SourceSna
 		ServiceName:        p.serviceName,
 		MonitorServiceName: p.monitorServiceName,
 		HealthURL:          p.healthURL,
+		Mode:               p.effectiveMode(),
+		ReadyURL:           p.readyURL,
 	}
 	summary := map[string]interface{}{}
+	summary["mode"] = payload.Mode
 	status := monitoring.SourceStatusOK
 	var issues []string
 
-	if p.serviceName == "" {
+	switch payload.Mode {
+	case "systemd":
+		p.collectSystemdStatus(ctx, &payload, summary, &status, &issues)
+	case "http":
+		p.collectHTTPStatus(ctx, &payload, summary, &status, &issues)
+	default:
 		status = monitoring.SourceStatusError
-		issues = append(issues, "cloudflared service name is empty")
-	} else {
-		serviceStatus, err := p.statusRunner(ctx, p.serviceName)
-		payload.ServiceStatus = serviceStatus
-		summary["service_status"] = serviceStatus
-		if err != nil || serviceStatus != "active" {
-			status = monitoring.SourceStatusError
-			if err != nil {
-				issues = append(issues, "cloudflared service check failed")
-			} else {
-				issues = append(issues, "cloudflared is not active")
-			}
-		}
-	}
-
-	if p.monitorServiceName != "" {
-		monitorStatus, err := p.statusRunner(ctx, p.monitorServiceName)
-		payload.MonitorServiceStatus = monitorStatus
-		summary["monitor_service_status"] = monitorStatus
-		if err != nil || monitorStatus != "active" {
-			status = monitoring.SourceStatusError
-			if err != nil {
-				issues = append(issues, "cloudflared monitor service check failed")
-			} else {
-				issues = append(issues, "cloudflared monitor service is not active")
-			}
-		}
+		issues = append(issues, "unsupported cloudflared monitoring mode")
 	}
 
 	if p.healthURL != "" {
@@ -130,6 +123,67 @@ func (p *CloudflaredProvider) Collect(ctx context.Context) (monitoring.SourceSna
 		Payload:     rawPayload,
 		Error:       strings.Join(issues, "; "),
 	}, nil
+}
+
+func (p *CloudflaredProvider) effectiveMode() string {
+	mode := strings.ToLower(strings.TrimSpace(p.mode))
+	if mode == "" {
+		return "systemd"
+	}
+	return mode
+}
+
+func (p *CloudflaredProvider) collectSystemdStatus(ctx context.Context, payload *cloudflaredPayload, summary map[string]interface{}, status *string, issues *[]string) {
+	if p.serviceName == "" {
+		*status = monitoring.SourceStatusError
+		*issues = append(*issues, "cloudflared service name is empty")
+	} else {
+		serviceStatus, err := p.statusRunner(ctx, p.serviceName)
+		payload.ServiceStatus = serviceStatus
+		summary["service_status"] = serviceStatus
+		if err != nil || serviceStatus != "active" {
+			*status = monitoring.SourceStatusError
+			if err != nil {
+				*issues = append(*issues, "cloudflared service check failed")
+			} else {
+				*issues = append(*issues, "cloudflared is not active")
+			}
+		}
+	}
+
+	if p.monitorServiceName != "" {
+		monitorStatus, err := p.statusRunner(ctx, p.monitorServiceName)
+		payload.MonitorServiceStatus = monitorStatus
+		summary["monitor_service_status"] = monitorStatus
+		if err != nil || monitorStatus != "active" {
+			*status = monitoring.SourceStatusError
+			if err != nil {
+				*issues = append(*issues, "cloudflared monitor service check failed")
+			} else {
+				*issues = append(*issues, "cloudflared monitor service is not active")
+			}
+		}
+	}
+}
+
+func (p *CloudflaredProvider) collectHTTPStatus(ctx context.Context, payload *cloudflaredPayload, summary map[string]interface{}, status *string, issues *[]string) {
+	if p.readyURL == "" {
+		*status = monitoring.SourceStatusError
+		*issues = append(*issues, "cloudflared ready url is empty")
+		return
+	}
+
+	code, err := p.healthRunner(ctx, p.readyURL)
+	payload.ReadyStatusCode = code
+	summary["ready_status_code"] = code
+	if err != nil || code != http.StatusOK {
+		*status = monitoring.SourceStatusError
+		if err != nil {
+			*issues = append(*issues, "cloudflared ready url check failed")
+		} else {
+			*issues = append(*issues, "cloudflared ready url returned non-200")
+		}
+	}
 }
 
 func systemctlStatusRunner(ctx context.Context, serviceName string) (string, error) {
